@@ -33,9 +33,23 @@ djinn.define('sec_log', {
   indexes: ['node_id', 'event', 'created_at'],
 });
 
+// sec_memo: 빠른 메모(캡처용, 그래프 노드와 별개). id는 "memo::<ts>-<rand>" 형태로
+// makeMemoId가 발급한다. remind_at(ISO, nullable)이 있으면 그 시각 이후에만 표면화되고,
+// 없으면 상시(standing) 메모로 늘 표면화 대상이다. 표면화는 어디까지나 풀(pull)
+// 기반이다 — 외부 push/알림은 없다([SKILL.md §1](../../SKILL.md)). status는
+// 'active'|'discarded'이며 폐기는 항상 소프트 삭제(hard delete 없음).
+djinn.define('sec_memo', {
+  indexes: ['status', 'remind_at', 'modified_at'],
+});
+
 function makeLogId(suffix) {
   const rand = Math.random().toString(36).slice(2, 10);
   return suffix != null ? `${Date.now()}-${suffix}-${rand}` : `${Date.now()}-${rand}`;
+}
+
+function makeMemoId() {
+  const rand = Math.random().toString(36).slice(2, 10);
+  return `memo::${Date.now()}-${rand}`;
 }
 
 module.exports = {
@@ -44,4 +58,5 @@ module.exports = {
   CATALOG_ID,
   PROFILE_ID,
   makeLogId,
+  makeMemoId,
 };

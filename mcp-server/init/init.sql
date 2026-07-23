@@ -49,5 +49,16 @@ CREATE INDEX IF NOT EXISTS idx_sec_log__node_id    ON sec_log(json_extract(doc, 
 CREATE INDEX IF NOT EXISTS idx_sec_log__event      ON sec_log(json_extract(doc, '$.event'));
 CREATE INDEX IF NOT EXISTS idx_sec_log__created_at ON sec_log(json_extract(doc, '$.created_at'));
 
+-- sec_memo.doc: { id, text, remind_at?(ISO, nullable=상시), status:'active'|'discarded',
+-- created_at, modified_at }. 폐기는 항상 소프트(status:'discarded')이며 hard delete는
+-- 없다.
+CREATE TABLE IF NOT EXISTS sec_memo (
+  id  TEXT PRIMARY KEY,
+  doc TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_sec_memo__status      ON sec_memo(json_extract(doc, '$.status'));
+CREATE INDEX IF NOT EXISTS idx_sec_memo__remind_at   ON sec_memo(json_extract(doc, '$.remind_at'));
+CREATE INDEX IF NOT EXISTS idx_sec_memo__modified_at ON sec_memo(json_extract(doc, '$.modified_at'));
+
 -- root 카탈로그 시드 (빈 calendars — 향후 캘린더 연동 설정은 sec_catalog 갱신으로 채운다)
 INSERT OR IGNORE INTO sec_catalog (id, doc) VALUES ('root', '{"default_timezone":null,"calendars":{},"created_at":"1970-01-01T00:00:00.000Z","modified_at":"1970-01-01T00:00:00.000Z"}');

@@ -14,10 +14,13 @@ description: >-
   큐레이션** 역할도 겸한다 — 답장이 필요한 노드는 ai-echo에, 학습이 필요한 개념은
   sun-sang에, 조사가 필요한 태스크는 doil-research에, 복합 오케스트레이션이 필요한
   하루/노드는 doil-supervise에 **제안만** 한다(직접 호출/지시하지 않음, 실행은 항상
-  사용자). "일정 관리해줘 / 오늘 일정 뭐 있어 / 이번주 일정 알려줘 / 일정 추가해줘 /
-  기념일 등록 / 매주 반복되는 루틴 추가 / 이거 큐레이션해줘 / 상태 확인 / 어젠다
-  내보내기" 류에서 트리거된다. onboard / agenda / add / list / anniversaries / routine
-  / curate / status / export 커맨드를 제공한다.
+  사용자). 캘린더 노드와 별개로 **빠른 메모(memo)** 캡처/조회/폐기도 지원한다 — 급히
+  적어두는 용도로, 비서 호출 시 활성 due 메모를 재표면화하고(풀 기반, 자동 알림 아님)
+  사용자 확인 후에만 소프트 폐기한다. "일정 관리해줘 / 오늘 일정 뭐 있어 / 이번주 일정
+  알려줘 / 일정 추가해줘 / 기념일 등록 / 매주 반복되는 루틴 추가 / 이거 큐레이션해줘 /
+  상태 확인 / 어젠다 내보내기 / 메모해줘 / 메모 보여줘 / 이거 폐기해줘" 류에서
+  트리거된다. onboard / agenda / add / list / anniversaries / routine / curate / status
+  / export / memo / memos / discard 커맨드를 제공한다.
 ---
 
 # doil-secretary
@@ -91,6 +94,9 @@ description: >-
 | `complete <노드>` | 일정/루틴 완료 처리(status 갱신 + complete 로그) | [11장](#11-완료-처리-complete) |
 | `log [필터]` | 이벤트 로그 조회 | [12장](#12-로그-log) |
 | `export` | 어젠다 스냅샷을 markdown으로 내보내기 | [13장](#13-내보내기-export) |
+| `memo <내용> [remind <시각>]` | 빠른 메모 저장(선택적 remind 시각) | [16장](#16-메모-memo) |
+| `memos` | 활성 메모 조회(due 우선) | [16장](#16-메모-memo) |
+| `discard <메모>` | 메모 폐기(확인 후) | [16장](#16-메모-memo) |
 
 ## 3. 온보딩 (onboard)
 
@@ -287,3 +293,29 @@ remind/curate 이벤트 로그를 최신순으로 조회한다. 특정 노드의
     onboard.lock)는 애초에 데이터 홈(`~/.doil-secretary`)에만 생기므로 이 repo 안에는
     없다 — `.gitignore`의 관련 패턴은 오설정·구버전 실행 등으로 혹시 데이터가 repo
     안에 생기는 사고를 막는 안전망일 뿐이다.
+
+## 16. 메모 (memo)
+
+캘린더 노드(`sec_node`)와는 별개의 저장소(`sec_memo`)를 쓰는 가벼운 캡처 기능이다 —
+그래프 edge(`relates_to`/`belongs_to`)도, 반복 규칙 전개도 없는 단순 텍스트 메모다.
+
+- **"메모해줘"** → `sec_memo_add({text, remind_at?})`로 빠르게 캡처한다(status:
+  `active`). 급히 적어두는 용도이지 일정/기념일/루틴을 대체하지 않는다 — 시간형 정보가
+  구조화되어야 하면 [5장 add](#5-노드-추가수정-add)로 `sec_node_put`을 쓴다. `id`를
+  이미 아는 기존 메모를 명시하면 upsert(갱신)된다.
+- **비서 호출 시(agenda/status/체크인) 활성 due 메모를 재표면화한다** — due 판정은
+  [§1 current 원칙](#1-핵심-원칙)의 현재 시각 기준이다: `sec_memo_list({due_only:true})`를
+  호출하고 `now`는 명시하지 않으면 서버가 현재시각으로 채운다. `remind_at`이 없는
+  메모는 상시 표면화 대상이고, `remind_at`이 있으면 그 시각 이후부터 표면화된다.
+- **재표면화할 때는 "폐기할까요?"라고 물어보고, 사용자가 확인해야만**
+  `sec_memo_discard({id})`로 폐기한다(소프트 삭제, `status:'discarded'`로만 바뀌고
+  hard delete는 없다). **절대 자동으로 폐기하지 않는다** — 사용자 확인 없이 조용히
+  치우면 안 된다.
+- **`remind_at`은 풀(pull) 기반 재표면화일 뿐, 외부 push/알림이 아니다.** 지정한
+  시각이 되었다고 텔레그램/cron 등으로 알림이 오지 않는다 — 이 스킬이 세션에서
+  다시 호출됐을 때에만(agenda/status/memos 등) 그 메모가 다시 눈에 띈다([§1](#1-핵심-원칙)
+  풀 기반 원칙과 일관). 이 스킬은 외부 연동(텔레그램/API/크론)이 전혀 없는
+  자기완결형(self-contained) 기능이다.
+- `memos` 커맨드는 기본 `status:'active'`로 `sec_memo_list`를 호출하고, due 메모를
+  먼저 보여준다. `discard <메모>`는 대상 메모를 `sec_memo_get`/`sec_memo_list`로 특정한
+  뒤 위 확인 절차를 거쳐 `sec_memo_discard`를 호출한다.

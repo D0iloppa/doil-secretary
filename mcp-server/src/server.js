@@ -4,7 +4,7 @@ const fs = require('fs');
 const { McpServer } = require('@modelcontextprotocol/sdk/server/mcp.js');
 const { StdioServerTransport } = require('@modelcontextprotocol/sdk/server/stdio.js');
 const { z } = require('zod');
-const { djinn, CATALOG_ID, PROFILE_ID, makeLogId } = require('./db');
+const { djinn, CATALOG_ID, PROFILE_ID, makeLogId, makeMemoId } = require('./db');
 const { ONBOARD_LOCK_PATH, DOILSECRETARY_HOME } = require('./paths');
 const { expandOccurrences } = require('./recurrence');
 
@@ -454,6 +454,82 @@ function createServer() {
       }
       const markdown = lines.join('\n');
       return json({ window, markdown });
+    }
+  );
+
+  // ---- 메모 -------------------------------------------------------
+
+  server.tool(
+    'sec_memo_add',
+    '빠른 메모를 캡처한다(status:active). id를 명시하고 기존 메모가 있으면 upsert(갱신) — 없으면 makeMemoId()로 새 id를 발급한다. remind_at(ISO, 선택)을 주면 그 시각 이후에만 표면화되고, 생략/null이면 상시(standing) 메모로 항상 표면화 대상이다.',
+    {
+      id: z.string().optional().describe('생략하면 새로 발급'),
+      text: z.string(),
+      remind_at: z.string().nullable().optional().describe('ISO 시각, 없으면 상시 메모'),
+    },
+    async ({ id, text, remind_at }) => {
+      const existing = id ? djinn.get('sec_memo', id) : null;
+      const memoId = id ?? makeMemoId();
+      const ts = now();
+      const doc = {
+        id: memoId,
+        text,
+        remind_at: remind_at === undefined ? existing?.remind_at ?? null : remind_at,
+        status: existing?.status ?? 'active',
+        created_at: existing?.created_at ?? ts,
+        modified_at: ts,
+      };
+      djinn.put('sec_memo', memoId, doc);
+      return json({ ok: true, memo: doc });
+    }
+  );
+
+  server.tool(
+    'sec_memo_list',
+    '메모 목록을 조회한다. status 기본값 active. due_only:true면 remind_at==null(상시) 이거나 remind_at<=now인 것만 남긴다(now 생략 시 서버 현재시각). remind_at 오름차순(상시는 맨 앞) → created_at 오름차순으로 정렬.',
+    {
+      status: z.enum(['active', 'discarded']).optional().describe('기본 active'),
+      due_only: z.boolean().optional().describe('true면 remind_at==null 이거나 remind_at<=now인 것만'),
+      now: z.string().optional().describe('due 판정 기준 시각(ISO), 생략 시 서버 현재시각'),
+    },
+    async ({ status, due_only, now: nowArg }) => {
+      const filter = { status: status ?? 'active' };
+      let rows = djinn.find('sec_memo', filter);
+      if (due_only) {
+        const cutoff = nowArg ?? now();
+        rows = rows.filter((m) => m.remind_at == null || m.remind_at <= cutoff);
+      }
+      rows.sort((a, b) => {
+        const ra = a.remind_at ?? '';
+        const rb = b.remind_at ?? '';
+        if (ra !== rb) return ra < rb ? -1 : 1;
+        return a.created_at < b.created_at ? -1 : a.created_at > b.created_at ? 1 : 0;
+      });
+      return json(rows);
+    }
+  );
+
+  server.tool(
+    'sec_memo_get',
+    '메모 하나를 조회한다.',
+    { id: z.string() },
+    async ({ id }) => {
+      const memo = djinn.get('sec_memo', id);
+      if (!memo) return json({ ok: false, error: `memo not found: ${id}` });
+      return json(memo);
+    }
+  );
+
+  server.tool(
+    'sec_memo_discard',
+    '메모를 소프트 폐기한다(status:discarded로 갱신, modified_at 갱신). hard delete는 하지 않는다.',
+    { id: z.string() },
+    async ({ id }) => {
+      const existing = djinn.get('sec_memo', id);
+      if (!existing) return json({ ok: false, error: `memo not found: ${id}` });
+      const doc = { ...existing, status: 'discarded', modified_at: now() };
+      djinn.put('sec_memo', id, doc);
+      return json({ ok: true, memo: doc });
     }
   );
 
