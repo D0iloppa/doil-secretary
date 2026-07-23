@@ -1,0 +1,18 @@
+{
+  "name": "doil-secretary-mcp",
+  "version": "0.1.0",
+  "description": "doil-secretary skill's scheduling store — dJinn(SQLite)-backed MCP server for a graph catalog of calendar nodes (events/anniversaries/routines/people/projects) + agenda expansion + logs",
+  "main": "src/index.js",
+  "type": "commonjs",
+  "bin": {
+    "doil-secretary-mcp": "src/index.js"
+  },
+  "scripts": {
+    "init": "node scripts/init-db.js"
+  },
+  "dependencies": {
+    "@d0iloppa/djinn": "git+https://github.com/D0iloppa/dJinn.git#3eacee5b03bc041e09f777aac6d581ebd97f63a8",
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "zod": "^3.23.8"
+  }
+}
