@@ -11,7 +11,7 @@
     "init": "node scripts/init-db.js"
   },
   "dependencies": {
-    "@d0iloppa/djinn": "git+https://github.com/D0iloppa/dJinn.git#3eacee5b03bc041e09f777aac6d581ebd97f63a8",
+    "@d0iloppa/djinn": "git+https://github.com/D0iloppa/dJinn.git#e4c751b374240f58267c6cafbab704b381672b31",
     "@modelcontextprotocol/sdk": "^1.29.0",
     "zod": "^3.23.8"
   }

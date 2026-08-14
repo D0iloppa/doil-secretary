@@ -387,6 +387,16 @@ function createServer() {
     }
   );
 
+  server.tool(
+    'sec_clear_cache',
+    'djinn LRU 쿼리 캐시를 전부 비운다. secretary.db를 다른 프로세스/커넥션이 직접 고쳤을 가능성이 있을 때 호출 — 안 비우면 이 프로세스가 낡은 값을 들고 있다가 이후 노드 upsert 시 merge 베이스로 써서 외부 변경을 조용히 되돌릴 수 있다.',
+    {},
+    async () => {
+      djinn.clearCache();
+      return json(djinn.cacheStats());
+    }
+  );
+
   // ---- 로그 -------------------------------------------------------
 
   server.tool(
