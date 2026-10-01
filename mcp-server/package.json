@@ -8,7 +8,8 @@
     "doil-secretary-mcp": "src/index.js"
   },
   "scripts": {
-    "init": "node scripts/init-db.js"
+    "init": "node scripts/init-db.js",
+    "test": "node --test test/"
   },
   "dependencies": {
     "@d0iloppa/djinn": "git+https://github.com/D0iloppa/dJinn.git#e4c751b374240f58267c6cafbab704b381672b31",

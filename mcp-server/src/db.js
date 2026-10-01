@@ -21,9 +21,9 @@ const PROFILE_ID = 'root';
 // 전역 유일 slug(예: "event::2026-08-01-dentist", "person::mom"). 엣지는 별도 테이블이
 // 아니라 doc 안의 JSON 필드로 표현한다 — relates_to(비계층 참조), belongs_to(계층 edge,
 // project 노드를 향한 상위 링크), curations(연계 스킬의 큐레이션 제안 목록). 시간형
-// kind(event/anniversary/routine)는 start/end/all_day/timezone/recurrence/status를
-// 추가로 갖는다. recurrence:null이면 단발성, 아니면
-// {freq:'daily'|'weekly'|'monthly'|'yearly', interval, byday?, until?} 형태다.
+// kind(event/todo/anniversary/routine)는 start/end/all_day/timezone/recurrence/status를
+// 추가로 갖는다(todo는 start=기한). recurrence:null이면 단발성, 아니면
+// {freq:'daily'|'weekly'|'monthly'|'yearly', interval, byday?, until?, count?, exdates?} 형태다.
 djinn.define('sec_node', {
   indexes: ['kind', 'start', 'status', 'belongs_to', 'modified_at'],
 });

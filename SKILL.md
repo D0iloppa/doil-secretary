@@ -61,8 +61,19 @@ description: >-
   호출 시점에 조회하는 것이지, 예약 알림을 거는 것이 아니다.
 - **반복 규칙 전개는 결정적 코드로 한다(compute-over-inference).** "다음 반복일이
   언제냐"를 AI가 추론하지 않는다 — `mcp-server/src/recurrence.js`의
-  `expandOccurrences()`가 daily/weekly(+byday)/monthly/yearly + interval + until을
-  계산한다. `sec_agenda`가 이 함수 위에서 동작한다.
+  `expandOccurrences()`가 daily/weekly(+byday)/monthly/yearly + interval + until +
+  count + exdates를 계산한다. `sec_agenda`가 이 함수 위에서 동작한다. 순수 함수라
+  doil-console도 이 파일을 그대로 가져다 쓴다(로직 복제 금지).
+  - **타임존은 명시적이다**: `node.timezone` → 프로파일 `timezone` → `Asia/Seoul` 순서.
+    오프셋 없는 `start`("2026-08-22T21:40:00")는 그 타임존의 벽시계로 해석하고, 출력은
+    항상 `2026-10-01T07:30:00+09:00` 같은 오프셋 포함 로컬 ISO(`all_day`는
+    `YYYY-MM-DD`)라 모호하지 않다. `sec_agenda`의 `today`/`week`/`next_days` 창도 UTC가
+    아니라 이 타임존의 로컬 자정 기준이다.
+  - **월말은 clamp한다**: 매달 31일은 짧은 달에 그 달 마지막 날로 떨어진다(1/31 → 2/28
+    (윤년 2/29) → 3/31 …, 직전 발생이 아니라 start 기준이라 어긋나지 않는다). 2/29 매년은
+    평년에 2/28이다.
+  - **발생 키**: 각 발생은 `occurrence_key`(로컬 `YYYY-MM-DDTHH:mm`, 종일은
+    `YYYY-MM-DD`)로 식별한다. 완료·제외(exdates) 모두 이 키를 쓴다.
 - **큐레이션은 제안일 뿐, 실행이 아니다.** 다른 스킬로의 연계는 항상 "이 노드엔 X 스킬을
   써보는 게 어떨까요" 제안으로 그친다 — 비서가 직접 다른 스킬을 호출/지시하지 않는다.
   자세한 계약은 [14장](#14-optional-catalog-스킬-연계-큐레이션).
@@ -91,7 +102,7 @@ description: >-
 | `link` / `unlink` | 노드 간 비계층 참조 추가/제거 | [6장](#6-노드-구성-원칙) |
 | `curate <노드> <스킬>` / `uncurate` | 노드에 연계 스킬 큐레이션 제안 저장/제거 | [14장](#14-optional-catalog-스킬-연계-큐레이션) |
 | `status` | kind/status별 집계 + 다음 일정 + overdue 개수 | [10장](#10-상태-status) |
-| `complete <노드>` | 일정/루틴 완료 처리(status 갱신 + complete 로그) | [11장](#11-완료-처리-complete) |
+| `complete <노드> [발생]` | 일정/할 일/루틴의 한 발생 완료·완료 취소(`sec_complete`) | [11장](#11-완료-처리-complete) |
 | `log [필터]` | 이벤트 로그 조회 | [12장](#12-로그-log) |
 | `export` | 어젠다 스냅샷을 markdown으로 내보내기 | [13장](#13-내보내기-export) |
 | `memo <내용> [remind <시각>]` | 빠른 메모 저장(선택적 remind 시각) | [16장](#16-메모-memo) |
@@ -125,9 +136,10 @@ description: >-
    - `preset:'week'`(기본값, 인자 생략 시) — 오늘부터 +7일.
    - `preset:'next_days', days:N` — 오늘부터 N일.
    - 특정 기간을 직접 지정하려면 `from`/`to`(ISO)를 준다(이 경우 preset은 무시된다).
-   - `kind`로 event/anniversary/routine 중 하나만 좁혀볼 수 있다(생략하면 전부).
-2. 반환된 `items`(각 `{node_id, kind, title, occurrence, status, curations}`)를
-   날짜순으로 사용자에게 보여준다. `curations`가 비어있지 않은 항목은
+   - `kind`로 event/todo/anniversary/routine 중 하나만 좁혀볼 수 있다(생략하면 전부).
+2. 반환된 `items`(각 `{node_id, kind, title, occurrence, occurrence_key, all_day,
+   timezone, status, done, curations}`)를 날짜순으로 사용자에게 보여준다. `done`은 그
+   발생의 완료 상태다([11장](#11-완료-처리-complete)). `curations`가 비어있지 않은 항목은
    [14장](#14-optional-catalog-스킬-연계-큐레이션) 제안이 저장돼 있다는 뜻이므로 함께
    짚어준다.
 3. 반복 일정(recurrence)의 다음 발생일 계산은 서버가 `recurrence.js`의 결정적 코드로
@@ -138,15 +150,19 @@ description: >-
 `add <종류> ...` — `sec_node_put`으로 노드를 upsert한다. 신규/기존 무관하게 같은
 도구를 쓴다(id가 이미 있으면 갱신, 없으면 생성).
 
-1. `kind`를 정한다: `event`(일정, 보통 recurrence 없음) / `anniversary`(기념일,
+1. `kind`를 정한다: `event`(일정, 보통 recurrence 없음) / `todo`(할 일 — `start`가
+   기한(due), 단발이면 완료 시 `status:'done'`) / `anniversary`(기념일,
    보통 `recurrence.freq:'yearly'`, `all_day:true`) / `routine`(루틴, cadence에 맞는
    recurrence) / `person`(인물) / `project`(프로젝트, 그룹핑 노드).
 2. `id`는 호출자가 짓는 전역 유일 slug다(예: `event::2026-08-01-dentist`,
    `person::mom`, `project::office-move`) — 이후 모든 세션에서 이 id로 같은 노드를
    가리킨다.
-3. 시간형(event/anniversary/routine)은 `start`가 필수다. `end`/`all_day`/`timezone`/
+3. 시간형(event/todo/anniversary/routine)은 `start`가 필수다. `end`/`all_day`/`timezone`/
    `recurrence`/`status`(기본 `active`)를 함께 지정할 수 있다. `recurrence`는 생략하면
-   기존 값을 보존하고, 명시적으로 없애려면 `null`을 준다.
+   기존 값을 보존하고, 명시적으로 없애려면 `null`을 준다. `recurrence`는
+   `{freq, interval?, byday?, until?, count?, exdates?}`다 — `count`는 start 포함 총
+   발생 횟수, `exdates`는 제외할 발생 키 목록(예: `["2026-10-03T07:30"]`, 날짜만 줘도
+   된다). `start`는 오프셋 없이 `YYYY-MM-DDTHH:mm`(로컬 벽시계)로 주는 것이 가장 단순하다.
 4. 다른 노드와 소속 관계(프로젝트 하위)가 있으면 `belongs_to`에 프로젝트 노드 id를
    준다. 소속은 아니지만 연관이 있으면(예: 참석자, 관련 인물) `sec_node_link({id,
    node_id, rel?, note?})`로 `relates_to`에 추가한다 — `belongs_to`(계층)와 혼동하지
@@ -195,21 +211,26 @@ overdue가 있으면 짚어주고 `complete`/재조정을 유도한다.
 
 ## 11. 완료 처리 (complete)
 
-`complete <노드>` — 일정/루틴을 완료 처리한다.
+`complete <노드> [발생]` — 일정/할 일/루틴의 **한 발생**을 완료 처리하거나(기본) 취소한다.
 
-1. `sec_node_get({id})`로 현재 노드를 확인한다.
-2. `sec_node_put({id, kind, title, status:'done', ...기존 필드 유지})`로 `status`를
-   `done`으로 갱신한다(다른 필드는 생략하면 보존되므로 굳이 다시 안 넣어도 된다).
-3. `sec_log_add({node_id:id, event:'complete'})`로 완료 이벤트를 기록한다.
-4. 반복 루틴(`routine`)은 "이번 발생만" 완료 처리하는 개념이 없다(occurrence 단위
-   상태를 저장하지 않음) — 전체 루틴을 종료하려는 게 아니라면 `complete`은 event처럼
-   단발성 노드에 주로 쓴다. 반복 루틴의 개별 발생 완료는 `sec_log_add`로 기록만 남기고
-   노드 status는 `active`로 유지하는 편을 권장한다.
+1. `sec_complete({id, occurrence?, done?})`를 호출한다. `occurrence`는 `sec_agenda`
+   항목의 `occurrence_key`(`YYYY-MM-DDTHH:mm`, 종일은 `YYYY-MM-DD`)이고, **단발 노드는
+   생략하면 start 발생**이다. 반복 노드는 `occurrence`가 필수다. `done:false`는 완료
+   취소(undo)다.
+2. 단발 노드는 `status`도 `done`(취소 시 `active`)으로 갱신되고, 반복 노드는 노드
+   `status`를 건드리지 않고(계속 `active`) 발생별 기록만 남는다. 어느 쪽이든 sec_log에
+   `{node_id, event:'complete'|'uncomplete', occurrence}`가 쌓이고, **같은 발생의 마지막
+   기록이 이긴다**(`sec_agenda`의 `done`).
+3. 멱등이다: 이미 그 상태면 `changed:false`를 돌려주고 아무것도 쓰지 않는다. 실제
+   발생이 아닌 키(exdates로 제외됐거나 규칙에 없는 날짜)는 `ok:false`로 거절한다.
+4. 예전 방식(`sec_node_put status:'done'` + `sec_log_add complete`)으로 만든 단발 완료
+   기록도 그대로 `done:true`로 읽힌다(하위 호환).
 
 ## 12. 로그 (log)
 
 `log [필터]` — `sec_log_list({node_id?, event?, limit?})`로 create/update/complete/
-remind/curate 이벤트 로그를 최신순으로 조회한다. 특정 노드의 변경 이력을 추적하거나,
+uncomplete/remind/curate 이벤트 로그를 최신순으로 조회한다(`complete`/`uncomplete`에는
+`occurrence`가 붙는다). 특정 노드의 변경 이력을 추적하거나,
 언제 큐레이션이 제안됐는지 확인할 때 쓴다.
 
 ## 13. 내보내기 (export)
@@ -327,6 +348,18 @@ remind/curate 이벤트 로그를 최신순으로 조회한다. 특정 노드의
   다시 호출됐을 때에만(agenda/status/memos 등) 그 메모가 다시 눈에 띈다([§1](#1-핵심-원칙)
   풀 기반 원칙과 일관). 이 스킬은 외부 연동(텔레그램/API/크론)이 전혀 없는
   자기완결형(self-contained) 기능이다.
+- **메모 문서 모양과 콘솔 빠른 메모**: `{id, text(레거시, body_md의 거울), body_md(마크다운),
+  color(yellow 기본|green|blue|pink|purple|gray), remind_at, status, created_at,
+  modified_at, updated_at}`. `updated_at`은 서버가 **모든 쓰기에서** 갱신하는 ISO 버전이며
+  낙관적 동시성에 쓴다(같은 밀리초 안에서도 반드시 증가). `text`만 있는 옛 메모는 **읽을 때**
+  `body_md=text`, `color=yellow`, `updated_at=modified_at`로 마이그레이션되어 나오고 다음 쓰기에
+  저장된다. `sec_memo_add({body_md?, text?, color?, remind_at?, id?})`(둘 중 하나 이상의 본문 필요),
+  `sec_memo_update({id, body_md?, color?, expected_updated_at})` → `{ok:true, memo}` 또는 버전이
+  다르거나 이미 폐기된 경우 쓰지 않고 `{ok:false, conflict:true, memo:<현재>}`,
+  `sec_memo_list({order:'recent'})`는 updated_at 내림차순이다. doil-console 오른쪽 패널의 빠른
+  메모는 이 `sec_memo`가 단일 정본이다(콘솔은 읽기 전용 어댑터와 이 MCP의 쓰기 도구로만
+  접근). 폐기는 여전히 소프트이며, 콘솔은 사용자가 확인 대화상자에서 확인한 뒤에만
+  `sec_memo_discard`를 호출한다.
 - `memos` 커맨드는 기본 `status:'active'`로 `sec_memo_list`를 호출하고, due 메모를
   먼저 보여준다. `discard <메모>`는 대상 메모를 `sec_memo_get`/`sec_memo_list`로 특정한
   뒤 위 확인 절차를 거쳐 `sec_memo_discard`를 호출한다.

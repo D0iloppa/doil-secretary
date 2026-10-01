@@ -22,12 +22,12 @@ CREATE TABLE IF NOT EXISTS sec_profile (
 );
 CREATE INDEX IF NOT EXISTS idx_sec_profile__modified_at ON sec_profile(json_extract(doc, '$.modified_at'));
 
--- sec_node.doc 필드(공통): { id, kind:'event'|'anniversary'|'routine'|'person'|'project',
+-- sec_node.doc 필드(공통): { id, kind:'event'|'todo'|'anniversary'|'routine'|'person'|'project',
 --   title, description?, tags:[...], relates_to:[{node_id, rel?, note?}](비계층 참조),
 --   belongs_to?(project 노드를 향한 계층 edge, nullable), curations:[{catalog, reason,
 --   note?}](연계 스킬 큐레이션 제안), created_at, modified_at }
--- 시간형 kind(event/anniversary/routine) 추가 필드: { start(ISO date|datetime), end?,
---   all_day?, timezone?, recurrence:null|{freq, interval, byday?, until?},
+-- 시간형 kind(event/todo/anniversary/routine) 추가 필드: { start(ISO date|datetime; todo는 기한), end?,
+--   all_day?, timezone?, recurrence:null|{freq, interval, byday?, until?, count?, exdates?},
 --   status:'active'|'done'|'cancelled' }
 -- person 추가 필드: { contact?, relation? }. project는 그룹핑 노드(belongs_to 대상)로,
 -- 추가 필드 없이 공통 필드만 쓴다.
@@ -49,8 +49,8 @@ CREATE INDEX IF NOT EXISTS idx_sec_log__node_id    ON sec_log(json_extract(doc, 
 CREATE INDEX IF NOT EXISTS idx_sec_log__event      ON sec_log(json_extract(doc, '$.event'));
 CREATE INDEX IF NOT EXISTS idx_sec_log__created_at ON sec_log(json_extract(doc, '$.created_at'));
 
--- sec_memo.doc: { id, text, remind_at?(ISO, nullable=상시), status:'active'|'discarded',
--- created_at, modified_at }. 폐기는 항상 소프트(status:'discarded')이며 hard delete는
+-- sec_memo.doc: { id, text(레거시, body_md 거울), body_md(마크다운), color(yellow|green|blue|pink|purple|gray), remind_at?(ISO, nullable=상시), status:'active'|'discarded',
+-- created_at, modified_at, updated_at(서버 갱신 버전, 낙관적 동시성) }. 읽을 때 text→body_md 마이그레이션. 폐기는 항상 소프트(status:'discarded')이며 hard delete는
 -- 없다.
 CREATE TABLE IF NOT EXISTS sec_memo (
   id  TEXT PRIMARY KEY,

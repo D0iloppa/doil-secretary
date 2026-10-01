@@ -58,19 +58,24 @@ Claude Code MCP 설정(`~/.claude/settings.json` 등)에 stdio 서버로 등록:
 sec_catalog  // root, 1-row(id='root'). { default_timezone, calendars:{}, created_at, modified_at }
 sec_profile  // root, 1-row(id='root'). { name, timezone, working_hours?, onboarded_at, created_at, modified_at }
 sec_node     // 그래프 노드. id는 호출자가 부여하는 전역 유일 slug(예: "event::2026-08-01-dentist").
-             // 공통: { id, kind:'event'|'anniversary'|'routine'|'person'|'project', title,
+             // 공통: { id, kind:'event'|'todo'|'anniversary'|'routine'|'person'|'project', title,
              //   description?, tags:[...], relates_to:[{node_id, rel?, note?}](비계층 참조),
              //   belongs_to?(project 노드를 향한 계층 edge, nullable),
              //   curations:[{catalog, reason, note?}](연계 스킬 큐레이션 제안), created_at, modified_at }
-             // 시간형(event/anniversary/routine) 추가: { start, end?, all_day?, timezone?,
-             //   recurrence:null|{freq, interval, byday?, until?}, status:'active'|'done'|'cancelled' }
+             // 시간형(event/todo/anniversary/routine) 추가: { start(todo는 기한), end?, all_day?, timezone?,
+             //   recurrence:null|{freq, interval, byday?, until?, count?, exdates?}, status:'active'|'done'|'cancelled' }
              // person 추가: { contact?, relation? }. project는 그룹핑 노드(추가 필드 없음).
-sec_log      // 이벤트 로그(append). { id, node_id?, event:'create'|'update'|'complete'|'remind'|'curate', detail?, created_at }
+sec_log      // 이벤트 로그(append). { id, node_id?, event:'create'|'update'|'complete'|'uncomplete'|'remind'|'curate',
+             //   occurrence?('YYYY-MM-DDTHH:mm' | all_day 'YYYY-MM-DD', complete/uncomplete 대상 발생), detail?, created_at }
 ```
 
 엣지는 별도 테이블이 아니라 `sec_node.doc` 안의 JSON 필드(`relates_to`/`belongs_to`)로만
 표현한다(sun-sang의 concept refs/parent와 동일한 패턴). 반복 규칙(`recurrence`) 전개는
-LLM 추론이 아니라 `src/recurrence.js`의 결정적 코드(`expandOccurrences`)가 담당한다.
+LLM 추론이 아니라 `src/recurrence.js`의 결정적 코드(`expandOccurrences`)가 담당한다
+(명시적 타임존 — 노드 → 프로파일 → `Asia/Seoul` — 과 `+09:00` 오프셋 출력, 월말 clamp,
+`count`/`exdates` 지원. 순수 모듈이라 doil-console이 그대로 require한다).
+발생별 완료는 `sec_complete`가 `sec_log`의 `complete`/`uncomplete`+`occurrence`로 남긴다(반복 노드는
+status를 바꾸지 않는다).
 인덱스: `sec_node`(kind/start/status/belongs_to/modified_at), `sec_log`(node_id/event/created_at),
 그 외는 각각 modified_at 기준.
 
@@ -90,9 +95,13 @@ LLM 추론이 아니라 `src/recurrence.js`의 결정적 코드(`expandOccurrenc
 | `sec_node_uncurate` | 노드의 큐레이션 제안 하나 제거 |
 | `sec_agenda` | CORE — 창(window) 안의 일정/기념일/루틴을 반복 규칙까지 전개해 시간순 반환 |
 | `sec_status` | kind/status별 집계 + 다음 어젠다 항목 + overdue 개수 |
+| `sec_complete` | 한 발생의 완료/완료 취소(발생별 로그, 단발 노드는 status도 갱신, 멱등) |
 | `sec_log_add` | 이벤트를 로그에 append |
 | `sec_log_list` | 로그 조회(node_id/event/limit 필터) |
 | `sec_export_md` | 어젠다 스냅샷을 markdown으로 렌더링 |
+
+테스트: `cd mcp-server && npm test`(`test/recurrence.test.js` 순수 전개, `test/server.test.js`는 임시
+`DOILSECRETARY_HOME`으로 서버를 stdio로 띄워 도구를 호출 — 실제 데이터 홈은 건드리지 않는다).
 
 자세한 사용 규칙(온보딩, 커맨드 흐름, 큐레이션 계약, 데이터 홈 원칙)은
 [`SKILL.md`](./SKILL.md) 참고.
