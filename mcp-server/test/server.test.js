@@ -171,3 +171,21 @@ test('memo: a raw legacy doc (text only, no body_md/color/updated_at) is readabl
   assert.strictEqual(upd.ok, true);
   assert.strictEqual(upd.memo.created_at, '2026-09-01T00:00:00.000Z');
 });
+
+test('node put: location round-trips; null clears end/description/location; omission preserves', async () => {
+  const base = { id: 'event::loc-1', kind: 'event', title: '회의', start: '2026-10-05T10:00', end: '2026-10-05T11:00', description: '안건', location: '  본사 3층  ' };
+  const put = await call('sec_node_put', base);
+  assert.strictEqual(put.node.location, '본사 3층');
+  assert.strictEqual((await call('sec_node_get', { id: base.id })).location, '본사 3층');
+  assert.strictEqual((await call('sec_node_list', { kind: 'event' })).find((n) => n.id === base.id).location, '본사 3층');
+
+  const kept = await call('sec_node_put', { id: base.id, kind: 'event', title: '회의2' });
+  assert.deepStrictEqual([kept.node.location, kept.node.end, kept.node.description], ['본사 3층', '2026-10-05T11:00', '안건']);
+
+  const cleared = await call('sec_node_put', { id: base.id, kind: 'event', title: '회의2', end: null, description: null, location: null });
+  assert.deepStrictEqual([cleared.node.location, cleared.node.end, cleared.node.description], [null, null, '']);
+  assert.strictEqual((await call('sec_node_get', { id: base.id })).end, null);
+
+  const tooLong = await client.callTool({ name: 'sec_node_put', arguments: { ...base, id: 'event::loc-2', location: 'x'.repeat(201) } });
+  assert.ok(tooLong.isError || /ok":\s*false/.test(tooLong.content[0].text));
+});

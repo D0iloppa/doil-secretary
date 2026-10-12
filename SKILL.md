@@ -158,7 +158,7 @@ description: >-
    `person::mom`, `project::office-move`) — 이후 모든 세션에서 이 id로 같은 노드를
    가리킨다.
 3. 시간형(event/todo/anniversary/routine)은 `start`가 필수다. `end`/`all_day`/`timezone`/
-   `recurrence`/`status`(기본 `active`)를 함께 지정할 수 있다. `recurrence`는 생략하면
+   `recurrence`/`status`(기본 `active`)를 함께 지정할 수 있다. 선택 필드 `location`(장소, ≤200자)도 받는다. `end`/`description`/`location`은 생략하면 기존 값을 보존하고 `null`을 주면 비운다. `recurrence`는 생략하면
    기존 값을 보존하고, 명시적으로 없애려면 `null`을 준다. `recurrence`는
    `{freq, interval?, byday?, until?, count?, exdates?}`다 — `count`는 start 포함 총
    발생 횟수, `exdates`는 제외할 발생 키 목록(예: `["2026-10-03T07:30"]`, 날짜만 줘도

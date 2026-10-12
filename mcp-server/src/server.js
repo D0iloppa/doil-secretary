@@ -209,13 +209,14 @@ function createServer() {
       id: z.string().describe('전역 유일 slug, 예: "event::2026-08-01-dentist", "person::mom"'),
       kind: z.enum(NODE_KINDS),
       title: z.string(),
-      description: z.string().optional(),
+      description: z.string().nullable().optional().describe('null=비우기, 생략=기존 값 보존'),
+      location: z.string().trim().max(200).nullable().optional().describe('장소(≤200자). null=비우기, 생략=기존 값 보존'),
       tags: z.array(z.string()).optional(),
       relates_to: z.array(relatesToSchema).optional().describe('비계층 참조 목록(전체 교체). 점진적 추가/삭제는 sec_node_link/sec_node_unlink 권장'),
       belongs_to: z.string().nullable().optional().describe('상위 프로젝트 노드 id(계층 edge), 없으면 null'),
       curations: z.array(curationSchema).optional().describe('연계 스킬 큐레이션 제안 목록(전체 교체). 점진적 추가/삭제는 sec_node_curate/sec_node_uncurate 권장'),
       start: z.string().optional().describe('시간형 kind 필수 — ISO date 또는 datetime'),
-      end: z.string().optional(),
+      end: z.string().nullable().optional().describe('null=비우기, 생략=기존 값 보존'),
       all_day: z.boolean().optional(),
       timezone: z.string().optional(),
       recurrence: recurrenceSchema.optional().describe('null=단발성. 생략 시 기존 값 보존'),
@@ -225,7 +226,7 @@ function createServer() {
     },
     async (args) => {
       const {
-        id, kind, title, description, tags, relates_to, belongs_to, curations,
+        id, kind, title, description, location, tags, relates_to, belongs_to, curations,
         start, end, all_day, timezone, recurrence, status, contact, relation,
       } = args;
       const isTemporal = TEMPORAL_KINDS.includes(kind);
@@ -238,7 +239,8 @@ function createServer() {
         id,
         kind,
         title,
-        description: description ?? existing?.description ?? '',
+        description: description === undefined ? existing?.description ?? '' : description ?? '',
+        location: location === undefined ? existing?.location ?? null : (location || null),
         tags: tags ?? existing?.tags ?? [],
         relates_to: relates_to ?? existing?.relates_to ?? [],
         belongs_to: belongs_to === undefined ? existing?.belongs_to ?? null : belongs_to,
@@ -248,7 +250,7 @@ function createServer() {
       };
       if (isTemporal) {
         doc.start = start ?? existing?.start;
-        doc.end = end ?? existing?.end ?? null;
+        doc.end = end === undefined ? existing?.end ?? null : end;
         doc.all_day = all_day ?? existing?.all_day ?? false;
         doc.timezone = timezone ?? existing?.timezone ?? null;
         doc.recurrence = recurrence === undefined ? existing?.recurrence ?? null : recurrence;

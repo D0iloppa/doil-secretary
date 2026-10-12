@@ -59,10 +59,11 @@ sec_catalog  // root, 1-row(id='root'). { default_timezone, calendars:{}, create
 sec_profile  // root, 1-row(id='root'). { name, timezone, working_hours?, onboarded_at, created_at, modified_at }
 sec_node     // 그래프 노드. id는 호출자가 부여하는 전역 유일 slug(예: "event::2026-08-01-dentist").
              // 공통: { id, kind:'event'|'todo'|'anniversary'|'routine'|'person'|'project', title,
-             //   description?, tags:[...], relates_to:[{node_id, rel?, note?}](비계층 참조),
+             //   description?, location?(≤200자), tags:[...], relates_to:[{node_id, rel?, note?}](비계층 참조),
              //   belongs_to?(project 노드를 향한 계층 edge, nullable),
              //   curations:[{catalog, reason, note?}](연계 스킬 큐레이션 제안), created_at, modified_at }
-             // 시간형(event/todo/anniversary/routine) 추가: { start(todo는 기한), end?, all_day?, timezone?,
+             // 시간형(event/todo/anniversary/routine) 추가: { start(todo는 기한), end?, all_day?, timezone?,  // sec_node_put에서 end/description/location은 null=비우기, 생략=보존
+             //  
              //   recurrence:null|{freq, interval, byday?, until?, count?, exdates?}, status:'active'|'done'|'cancelled' }
              // person 추가: { contact?, relation? }. project는 그룹핑 노드(추가 필드 없음).
 sec_log      // 이벤트 로그(append). { id, node_id?, event:'create'|'update'|'complete'|'uncomplete'|'remind'|'curate',
