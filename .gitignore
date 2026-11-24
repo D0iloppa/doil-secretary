@@ -12,3 +12,6 @@ mcp-server/secrets/
 onboard.lock
 *.db
 *.db-*
+
+# Claude Code 작업용 임시 폴더(worktree 등)
+.claude/
